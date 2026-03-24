@@ -292,8 +292,9 @@ function simulateSystem(fuelPrice, routes) {
     const cost = route.cost * costScale;
     const profit = revenue - cost;
     const baselineFuelCost = (baseRoute.per_flight.fuel_cost || 0) * (baseRoute.effective_flights || 1);
-    const breakevenFuel = baselineFuelCost > 0 ? 1 + (baseRoute.profit / baselineFuelCost) : Number.POSITIVE_INFINITY;
-    const watchFuel = breakevenFuel * 0.85;
+    const distancePenalty = baseRoute.distance / 5000;
+    const breakevenFuel = baselineFuelCost > 0 ? (1 + (baseRoute.profit / baselineFuelCost)) - distancePenalty : Number.POSITIVE_INFINITY;
+    const watchFuel = breakevenFuel * 0.9;
     const active = Number(fuelPrice) < breakevenFuel;
     const status = !active ? "unsustainable" : Number(fuelPrice) >= watchFuel ? "watch" : "healthy";
     const perFlightPassengerRevenue = route.per_flight.passenger_revenue;

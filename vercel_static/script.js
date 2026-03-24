@@ -258,8 +258,13 @@ function simulateSystem(fuelPrice, routes) {
   const raw = rawSimulation(fuelPrice, routes);
   const baselineRaw = fuelPrice === 1 ? raw : rawSimulation(1.0, routes);
   const baselineRoutesByCode = new Map(baselineRaw.route_map.routes.map((route) => [route.code, route]));
-  const revenueScale = ACTUAL_REVENUE_2023_24 / raw.summary.revenue;
-  const costScale = ACTUAL_EXPENSE_2023_24 / raw.summary.cost;
+  const revenueScale = ACTUAL_REVENUE_2023_24 / baselineRaw.summary.revenue;
+  const costScale = ACTUAL_EXPENSE_2023_24 / baselineRaw.summary.cost;
+  const revenueScenarioFactor = raw.summary.revenue / baselineRaw.summary.revenue;
+  const costScenarioFactor = raw.summary.cost / baselineRaw.summary.cost;
+  const annualRevenue = ACTUAL_REVENUE_2023_24 * revenueScenarioFactor;
+  const annualCost = ACTUAL_EXPENSE_2023_24 * costScenarioFactor;
+  const annualProfit = annualRevenue - annualCost;
   const revenueMix = [
     ["Passenger transport & ancillaries", ACTUAL_PASSENGER_REVENUE],
     ["Cargo & logistics", ACTUAL_CARGO_REVENUE],
@@ -269,8 +274,8 @@ function simulateSystem(fuelPrice, routes) {
     ["Aviation university", ACTUAL_AVIATION_UNIVERSITY_REVENUE],
     ["Ground services", ACTUAL_GROUND_SERVICES_REVENUE],
   ];
-  const revenueValues = revenueMix.map((item) => item[1] * revenueScale);
-  revenueValues[revenueValues.length - 1] = ACTUAL_REVENUE_2023_24 - revenueValues.slice(0, -1).reduce((sum, v) => sum + v, 0);
+  const revenueValues = revenueMix.map((item) => item[1] * revenueScenarioFactor);
+  revenueValues[revenueValues.length - 1] = annualRevenue - revenueValues.slice(0, -1).reduce((sum, v) => sum + v, 0);
 
   const fuelWeight = clamp(0.34 + 0.10 * (fuelPrice - 1.0), 0.28, 0.54);
   const costMix = [
@@ -283,14 +288,14 @@ function simulateSystem(fuelPrice, routes) {
     ["Other operating costs", 0.02],
   ];
   const remainder = costMix.slice(1).reduce((sum, item) => sum + item[1], 0);
-  const costValues = [ACTUAL_EXPENSE_2023_24 * costMix[0][1]];
-  costValues.push(...costMix.slice(1).map((item) => ACTUAL_EXPENSE_2023_24 * (1 - costMix[0][1]) * (item[1] / remainder)));
-  costValues[costValues.length - 1] = ACTUAL_EXPENSE_2023_24 - costValues.slice(0, -1).reduce((sum, v) => sum + v, 0);
+  const costValues = [annualCost * costMix[0][1]];
+  costValues.push(...costMix.slice(1).map((item) => annualCost * (1 - costMix[0][1]) * (item[1] / remainder)));
+  costValues[costValues.length - 1] = annualCost - costValues.slice(0, -1).reduce((sum, v) => sum + v, 0);
 
   const scaledRoutes = raw.route_map.routes.map((route) => {
     const baseRoute = baselineRoutesByCode.get(route.code) || route;
-    const revenue = route.revenue * revenueScale;
-    const cost = route.cost * costScale;
+    const revenue = route.revenue * revenueScale * revenueScenarioFactor;
+    const cost = route.cost * costScale * costScenarioFactor;
     const profit = revenue - cost;
     const baselineFuelCost = (baseRoute.per_flight.fuel_cost || 0) * (baseRoute.effective_flights || 1);
     const distancePenalty = baseRoute.distance / 5000;
@@ -301,8 +306,8 @@ function simulateSystem(fuelPrice, routes) {
     const status = !active ? "unsustainable" : Number(fuelPrice) >= watchFuel ? "watch" : "healthy";
     const perFlightPassengerRevenue = route.per_flight.passenger_revenue;
     const perFlightAncillaryRevenue = route.per_flight.ancillary_revenue;
-    const perFlightRevenue = perFlightPassengerRevenue + perFlightAncillaryRevenue;
-    const perFlightCost = route.per_flight.cost;
+    const perFlightRevenue = (perFlightPassengerRevenue + perFlightAncillaryRevenue) * revenueScenarioFactor;
+    const perFlightCost = route.per_flight.cost * costScenarioFactor;
     const perFlightProfit = perFlightRevenue - perFlightCost;
     return {
       ...route,
@@ -328,9 +333,8 @@ function simulateSystem(fuelPrice, routes) {
 
   const routeNetworkShare = scaledRoutes.length ? clamp(scaledRoutes.filter((route) => route.active).length / scaledRoutes.length, 0, 1) : 0;
   const relativeNetworkShare = BASELINE_ACTIVE_ROUTE_SHARE ? clamp(routeNetworkShare / BASELINE_ACTIVE_ROUTE_SHARE, 0, 1) : 0;
-  const demandShare = Math.pow(relativeNetworkShare, 0.35);
-  const fuelLoadShare = Math.pow(Number(fuelPrice), -1.22);
-  const workloadShare = clamp(fuelLoadShare * demandShare, 0, 1);
+  const fuelLoadShare = 1 / (1 + 0.7 * Math.max(0, Number(fuelPrice) - 1.0));
+  const workloadShare = clamp((0.75 * fuelLoadShare) + (0.25 * relativeNetworkShare), 0, 1);
   const baselineTotalRequiredHours = TOTAL_PILOTS * MONTHLY_HOURS_BENCHMARK;
   const currentTotalRequiredHours = baselineTotalRequiredHours * workloadShare;
   const currentHoursPerPilot = workloadShare * MONTHLY_HOURS_BENCHMARK;
@@ -343,9 +347,9 @@ function simulateSystem(fuelPrice, routes) {
   return {
     fuel_price: Number(fuelPrice.toFixed(2)),
     summary: {
-      revenue: Number(ACTUAL_REVENUE_2023_24.toFixed(2)),
-      cost: Number(ACTUAL_EXPENSE_2023_24.toFixed(2)),
-      profit: Number(ACTUAL_OPERATING_PROFIT_2023_24.toFixed(2)),
+      revenue: Number(annualRevenue.toFixed(2)),
+      cost: Number(annualCost.toFixed(2)),
+      profit: Number(annualProfit.toFixed(2)),
       active_routes: scaledRoutes.filter((r) => r.active).length,
       at_risk_routes: scaledRoutes.filter((r) => r.status === "watch").length,
       suspended_routes: scaledRoutes.filter((r) => r.status === "unsustainable").length,
@@ -357,7 +361,7 @@ function simulateSystem(fuelPrice, routes) {
     },
     income_statement: {
       labels: ["Revenue", "Cost", "Operating Profit"],
-      values: [ACTUAL_REVENUE_2023_24, ACTUAL_EXPENSE_2023_24, ACTUAL_OPERATING_PROFIT_2023_24],
+      values: [annualRevenue, annualCost, annualProfit],
     },
     structure: {
       revenue: {

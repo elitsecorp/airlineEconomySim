@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Model Help - Ethiopian Airlines Simulation</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Model Help</p>
+        <h1>How the simulation is calculated</h1>
+        <p class="subhead">This page explains the formulas behind the dashboard, the reasoning behind the cut logic, and why some values are annual totals while others are per-flight estimates.</p>
+        <a class="help-link" href="./index.html">Back to dashboard</a>
+      </div>
+    </header>
+
+    <section class="panel" style="padding: 22px;">
+      <div class="panel-head">
+        <h2>1) Revenue model</h2>
+        <p>Route demand changes with fuel price through price pass-through and elasticity.</p>
+      </div>
+      <div class="source-note" style="margin-top: 10px;">
+        <p><strong>Ticket price:</strong> <code>ticket_price = base_ticket_price × fuel_pass_through(fuel_price)</code></p>
+        <p><strong>Fuel pass-through:</strong> <code>fuel_pass_through = 1.0 + 0.10 × (fuel_price - 1.0)</code></p>
+        <p><strong>Demand:</strong> <code>demand = base_demand × (price / base_price) ^ elasticity</code></p>
+        <p><strong>Passenger revenue:</strong> <code>passengers × ticket_price</code></p>
+        <p><strong>Ancillary revenue:</strong> a small add-on share of passenger revenue, used to approximate bags, seat choice, and other extras.</p>
+      </div>
+      <p class="source-note">Reasoning: business demand is less sensitive to price than leisure demand, so the model uses a mild elasticity for business travelers and a stronger one for leisure travelers.</p>
+    </section>
+
+    <section class="panel" style="padding: 22px; margin-top: 16px;">
+      <div class="panel-head">
+        <h2>2) Cost model</h2>
+        <p>Each flight has fuel, crew, maintenance, and airport costs.</p>
+      </div>
+      <div class="source-note" style="margin-top: 10px;">
+        <p><strong>Fuel cost:</strong> <code>distance × fuel_burn × fuel_price</code></p>
+        <p><strong>Crew cost:</strong> fixed amount per flight, higher for widebodies</p>
+        <p><strong>Maintenance cost:</strong> <code>distance × maintenance_per_km</code></p>
+        <p><strong>Airport fees:</strong> fixed amount per flight</p>
+        <p><strong>Total cost:</strong> <code>fuel + crew + maintenance + airport fees</code></p>
+      </div>
+      <p class="source-note">Reasoning: longer flights and larger aircraft burn more fuel and create more operating cost pressure, especially when fuel prices rise.</p>
+    </section>
+
+    <section class="panel" style="padding: 22px; margin-top: 16px;">
+      <div class="panel-head">
+        <h2>3) Route viability</h2>
+        <p>Routes are marked watch or cut depending on how close they are to break-even.</p>
+      </div>
+      <div class="source-note" style="margin-top: 10px;">
+        <p><strong>Per-route profit:</strong> <code>profit = revenue - cost</code></p>
+        <p><strong>Break-even fuel threshold:</strong> <code>breakeven_fuel = 1 + (baseline_profit / baseline_fuel_cost) - (distance / 5000)</code></p>
+        <p><strong>Watch threshold:</strong> <code>watch_fuel = 0.90 × breakeven_fuel</code></p>
+        <p><strong>Cut rule:</strong> if current fuel price is at or above the break-even threshold, the route is suspended.</p>
+      </div>
+      <p class="source-note">Reasoning: long-haul routes are more exposed to fuel shocks, so the distance penalty pushes them into risk sooner than short domestic routes.</p>
+    </section>
+
+    <section class="panel" style="padding: 22px; margin-top: 16px;">
+      <div class="panel-head">
+        <h2>4) Pilot workload</h2>
+        <p>The gauge shows how cut routes reduce flying hours per pilot.</p>
+      </div>
+      <div class="source-note" style="margin-top: 10px;">
+        <p><strong>Workload share:</strong> <code>current_flight_share × (0.6 + 0.4 × passenger_share)</code></p>
+        <p><strong>Expected hours per pilot:</strong> <code>workload_share × 100</code></p>
+        <p><strong>Hours lost per pilot:</strong> <code>100 - expected_hours_per_pilot</code></p>
+        <p><strong>Total required hours:</strong> <code>pilot_count × 100 × workload_share</code></p>
+      </div>
+      <p class="source-note">Reasoning: pilot flying time falls when routes are cut, and passenger reductions pull the utilization down even further.</p>
+    </section>
+
+    <section class="panel" style="padding: 22px; margin-top: 16px;">
+      <div class="panel-head">
+        <h2>5) Annual totals vs per-flight figures</h2>
+        <p>The dashboard shows both because they answer different questions.</p>
+      </div>
+      <div class="source-note" style="margin-top: 10px;">
+        <p><strong>Income statement:</strong> annual totals are scaled to Ethiopian Airlines' published financial statement figures.</p>
+        <p><strong>Route panel:</strong> per-flight values are flight-level estimates for a single route leg.</p>
+        <p><strong>Revenue structure:</strong> the pie chart shows the annual mix of business lines.</p>
+        <p><strong>Cost structure:</strong> the pie chart shows annual cost buckets, reweighted as fuel prices move.</p>
+      </div>
+      <p class="source-note">Reasoning: one chart needs company-level scale, while the route detail panel needs leg-level economics. The simulation keeps both views separate to avoid mixing units.</p>
+    </section>
+
+    <section class="panel" style="padding: 22px; margin-top: 16px;">
+      <div class="panel-head">
+        <h2>6) Important caveat</h2>
+        <p>This is a simulation, not an audited forecasting model.</p>
+      </div>
+      <p class="source-note" style="margin-top: 10px;">
+        Public financial reports do not disclose every route's real per-flight economics, so the route-level values are modeled from published company totals, route characteristics, and fuel sensitivity. The formulas are transparent so you can see exactly how the dashboard reacts.
+      </p>
+    </section>
+  </main>
+</body>
+</html>

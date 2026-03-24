@@ -255,6 +255,8 @@ function rawSimulation(fuelPrice, routes) {
 
 function simulateSystem(fuelPrice, routes) {
   const raw = rawSimulation(fuelPrice, routes);
+  const baselineRaw = fuelPrice === 1 ? raw : rawSimulation(1.0, routes);
+  const baselineRoutesByCode = new Map(baselineRaw.route_map.routes.map((route) => [route.code, route]));
   const revenueScale = ACTUAL_REVENUE_2023_24 / raw.summary.revenue;
   const costScale = ACTUAL_EXPENSE_2023_24 / raw.summary.cost;
   const revenueMix = [
@@ -284,19 +286,16 @@ function simulateSystem(fuelPrice, routes) {
   costValues.push(...costMix.slice(1).map((item) => ACTUAL_EXPENSE_2023_24 * (1 - costMix[0][1]) * (item[1] / remainder)));
   costValues[costValues.length - 1] = ACTUAL_EXPENSE_2023_24 - costValues.slice(0, -1).reduce((sum, v) => sum + v, 0);
 
-  const currentTotalRequiredHours = raw.route_map.routes.reduce((sum, route) => sum + route.current_route_hours, 0);
-  const baselineTotalRequiredHours = raw.route_map.routes.reduce((sum, route) => sum + route.baseline_route_hours, 0);
-  const currentHoursPerPilot = baselineTotalRequiredHours ? (currentTotalRequiredHours / baselineTotalRequiredHours) * MONTHLY_HOURS_BENCHMARK : 0;
-  const lostHoursPerPilot = Math.max(0, MONTHLY_HOURS_BENCHMARK - currentHoursPerPilot);
-  const utilization = currentHoursPerPilot;
-  const pilotState = utilization < 75 ? "red" : utilization < 90 ? "yellow" : "green";
-
   const scaledRoutes = raw.route_map.routes.map((route) => {
+    const baseRoute = baselineRoutesByCode.get(route.code) || route;
     const revenue = route.revenue * revenueScale;
     const cost = route.cost * costScale;
     const profit = revenue - cost;
-    const active = route.active && !(profit < 0 && Number(fuelPrice) >= 1.8) && !(profit < -0.04 * revenue && Number(fuelPrice) >= 2.2);
-    const status = !active ? "unsustainable" : profit < 0.08 * revenue ? "watch" : "healthy";
+    const baselineFuelCost = (baseRoute.per_flight.fuel_cost || 0) * (baseRoute.effective_flights || 1);
+    const breakevenFuel = baselineFuelCost > 0 ? 1 + (baseRoute.profit / baselineFuelCost) : Number.POSITIVE_INFINITY;
+    const watchFuel = breakevenFuel * 0.85;
+    const active = Number(fuelPrice) < breakevenFuel;
+    const status = !active ? "unsustainable" : Number(fuelPrice) >= watchFuel ? "watch" : "healthy";
     const perFlightRevenue = route.per_flight.revenue * revenueScale;
     const perFlightCost = route.per_flight.cost * costScale;
     const perFlightProfit = perFlightRevenue - perFlightCost;
@@ -307,6 +306,7 @@ function simulateSystem(fuelPrice, routes) {
       profit: Number(profit.toFixed(2)),
       active,
       status,
+      breakeven_fuel: Number.isFinite(breakevenFuel) ? Number(breakevenFuel.toFixed(2)) : null,
       per_flight: {
         ...route.per_flight,
         revenue: Number(perFlightRevenue.toFixed(2)),
@@ -321,6 +321,21 @@ function simulateSystem(fuelPrice, routes) {
       },
     };
   });
+
+  const baselineFlights = baselineRaw.route_map.routes.reduce((sum, route) => sum + (route.active ? route.effective_flights : 0), 0);
+  const currentFlights = scaledRoutes.reduce((sum, route) => sum + (route.active ? route.effective_flights : 0), 0);
+  const baselinePassengers = Math.max(1, baselineRaw.summary.passengers);
+  const currentPassengerShare = clamp(raw.summary.passengers / baselinePassengers, 0, 1);
+  const currentFlightShare = baselineFlights ? clamp(currentFlights / baselineFlights, 0, 1) : 0;
+  const workloadShare = clamp(currentFlightShare * (0.6 + 0.4 * currentPassengerShare), 0, 1);
+  const baselineTotalRequiredHours = TOTAL_PILOTS * MONTHLY_HOURS_BENCHMARK;
+  const currentTotalRequiredHours = baselineTotalRequiredHours * workloadShare;
+  const currentHoursPerPilot = workloadShare * MONTHLY_HOURS_BENCHMARK;
+  const lostHoursPerPilot = Math.max(0, MONTHLY_HOURS_BENCHMARK - currentHoursPerPilot);
+  const utilization = currentHoursPerPilot;
+  const pilotState = utilization < 75 ? "red" : utilization < 90 ? "yellow" : "green";
+  const cutRoutes = scaledRoutes.filter((route) => route.status === "unsustainable");
+  const dangerRoutes = scaledRoutes.filter((route) => route.status === "watch");
 
   return {
     fuel_price: Number(fuelPrice.toFixed(2)),
@@ -362,6 +377,26 @@ function simulateSystem(fuelPrice, routes) {
       benchmark_hours: MONTHLY_HOURS_BENCHMARK,
       required_hours: Number(currentTotalRequiredHours.toFixed(2)),
       baseline_hours: Number(baselineTotalRequiredHours.toFixed(2)),
+    },
+    route_lists: {
+      cut: cutRoutes
+        .slice()
+        .sort((a, b) => a.profit - b.profit)
+        .map((route) => ({
+          code: route.code,
+          name: route.name,
+          region: route.region,
+          profit: route.profit,
+        })),
+      danger: dangerRoutes
+        .slice()
+        .sort((a, b) => a.profit - b.profit)
+        .map((route) => ({
+          code: route.code,
+          name: route.name,
+          region: route.region,
+          profit: route.profit,
+        })),
     },
   };
 }
@@ -501,6 +536,47 @@ function routeBadge(route) {
   return "healthy";
 }
 
+function routeListItem(route, type) {
+  const pill = type === "cut" ? "cut" : "watch";
+  const label = type === "cut" ? "cut" : "danger";
+  return `
+    <button class="route-list-item" data-route="${route.code}" type="button">
+      <span>
+        <strong>${route.name}</strong>
+        <small>${route.code} · ${route.region} · ${money(route.profit)}</small>
+      </span>
+      <span class="route-list-pill ${pill}">${label}</span>
+    </button>
+  `;
+}
+
+function renderRouteLists(state) {
+  const cutRoutes = state.route_lists.cut || [];
+  const dangerRoutes = state.route_lists.danger || [];
+  dom.cutRoutesCount.textContent = cutRoutes.length;
+  dom.dangerRoutesCount.textContent = dangerRoutes.length;
+
+  dom.cutRoutesList.innerHTML = cutRoutes.length
+    ? cutRoutes.slice(0, 12).map((route) => routeListItem(route, "cut")).join("")
+    : `<div class="route-detail-empty">No routes are cut at this fuel price.</div>`;
+  dom.dangerRoutesList.innerHTML = dangerRoutes.length
+    ? dangerRoutes.slice(0, 12).map((route) => routeListItem(route, "danger")).join("")
+    : `<div class="route-detail-empty">No routes are in danger at this fuel price.</div>`;
+
+  dom.cutRoutesList.querySelectorAll("[data-route]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const route = state.route_map.routes.find((item) => item.code === button.dataset.route);
+      if (route) selectRoute(route);
+    });
+  });
+  dom.dangerRoutesList.querySelectorAll("[data-route]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const route = state.route_map.routes.find((item) => item.code === button.dataset.route);
+      if (route) selectRoute(route);
+    });
+  });
+}
+
 function formatRouteDetail(route) {
   const riskReasons = route.risk_reasons.map((item) => `<li>${item}</li>`).join("");
   return `
@@ -625,6 +701,7 @@ function updateDashboard(state) {
   updateStats(state);
   updateCharts(state);
   renderRouteMap(state.route_map.routes);
+  renderRouteLists(state);
 }
 
 function initCharts(state) {
@@ -642,6 +719,7 @@ function initDom() {
     "pilotStateValue", "hoursPerPilotValue", "pilotLostHoursValue", "requiredHoursValue",
     "baselineHoursValue", "gauge", "routeDetail", "routeMap", "incomeChart",
     "revenueStructureChart", "costStructureChart", "routeEconomicsChart",
+    "cutRoutesCount", "dangerRoutesCount", "cutRoutesList", "dangerRoutesList",
   ].forEach((key) => {
     dom[key] = $(key.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`));
   });
@@ -672,6 +750,10 @@ function initDom() {
   dom.revenueStructureChart = $("revenue-structure-chart");
   dom.costStructureChart = $("cost-structure-chart");
   dom.routeEconomicsChart = $("route-economics-chart");
+  dom.cutRoutesCount = $("cut-routes-count");
+  dom.dangerRoutesCount = $("danger-routes-count");
+  dom.cutRoutesList = $("cut-routes-list");
+  dom.dangerRoutesList = $("danger-routes-list");
 }
 
 async function main() {

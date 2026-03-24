@@ -254,6 +254,104 @@ input[type="range"] {
   height: 220px !important;
 }
 
+.route-lists {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.route-list-card {
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.route-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.route-list-head h3 {
+  font-size: 0.98rem;
+}
+
+.route-list-head span {
+  min-width: 2.2rem;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  font-weight: 700;
+  text-align: center;
+}
+
+.route-list {
+  display: grid;
+  gap: 8px;
+  max-height: 210px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.route-list-item {
+  appearance: none;
+  font: inherit;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.route-list-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.route-list-item strong {
+  display: block;
+  font-size: 0.95rem;
+}
+
+.route-list-item small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.route-list-pill {
+  align-self: center;
+  justify-self: end;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.route-list-pill.cut {
+  background: rgba(228, 87, 87, 0.16);
+  color: #ff9a9a;
+}
+
+.route-list-pill.watch {
+  background: rgba(240, 180, 41, 0.16);
+  color: #ffd86f;
+}
+
 .route-detail h3 {
   font-size: 1.15rem;
   margin-bottom: 6px;
@@ -421,6 +519,10 @@ input[type="range"] {
   }
 
   .map-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .route-lists {
     grid-template-columns: 1fr;
   }
 

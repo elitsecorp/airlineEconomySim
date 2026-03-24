@@ -296,8 +296,10 @@ function simulateSystem(fuelPrice, routes) {
     const watchFuel = breakevenFuel * 0.85;
     const active = Number(fuelPrice) < breakevenFuel;
     const status = !active ? "unsustainable" : Number(fuelPrice) >= watchFuel ? "watch" : "healthy";
-    const perFlightRevenue = route.per_flight.revenue * revenueScale;
-    const perFlightCost = route.per_flight.cost * costScale;
+    const perFlightPassengerRevenue = route.per_flight.passenger_revenue;
+    const perFlightAncillaryRevenue = route.per_flight.ancillary_revenue;
+    const perFlightRevenue = perFlightPassengerRevenue + perFlightAncillaryRevenue;
+    const perFlightCost = route.per_flight.cost;
     const perFlightProfit = perFlightRevenue - perFlightCost;
     return {
       ...route,
@@ -308,16 +310,15 @@ function simulateSystem(fuelPrice, routes) {
       status,
       breakeven_fuel: Number.isFinite(breakevenFuel) ? Number(breakevenFuel.toFixed(2)) : null,
       per_flight: {
-        ...route.per_flight,
         revenue: Number(perFlightRevenue.toFixed(2)),
         cost: Number(perFlightCost.toFixed(2)),
         profit: Number(perFlightProfit.toFixed(2)),
-        passenger_revenue: Number((route.per_flight.passenger_revenue * revenueScale).toFixed(2)),
-        ancillary_revenue: Number((route.per_flight.ancillary_revenue * revenueScale).toFixed(2)),
-        fuel_cost: Number((route.per_flight.fuel_cost * costScale).toFixed(2)),
-        crew_cost: Number((route.per_flight.crew_cost * costScale).toFixed(2)),
-        maintenance_cost: Number((route.per_flight.maintenance_cost * costScale).toFixed(2)),
-        airport_fees: Number((route.per_flight.airport_fees * costScale).toFixed(2)),
+        passenger_revenue: Number(perFlightPassengerRevenue.toFixed(2)),
+        ancillary_revenue: Number(perFlightAncillaryRevenue.toFixed(2)),
+        fuel_cost: Number(route.per_flight.fuel_cost.toFixed(2)),
+        crew_cost: Number(route.per_flight.crew_cost.toFixed(2)),
+        maintenance_cost: Number(route.per_flight.maintenance_cost.toFixed(2)),
+        airport_fees: Number(route.per_flight.airport_fees.toFixed(2)),
       },
     };
   });
@@ -509,7 +510,7 @@ function createRouteEconomicsChart(ctx) {
         tooltip: { callbacks: { label: (ctx) => money(ctx.raw) } },
       },
       scales: {
-        y: { ticks: { callback: (value) => moneyBillion(value) } },
+        y: { ticks: { callback: (value) => money(value) } },
       },
     },
   });

@@ -20,6 +20,7 @@ const AVG_EXPENSE_PER_PASSENGER = ACTUAL_EXPENSE_2023_24 / ACTUAL_PASSENGERS_202
 const MONTHLY_HOURS_BENCHMARK = 100;
 const TOTAL_PILOTS = 3000;
 const PILOT_NETWORK_SCALE = 155.0;
+const BASELINE_ACTIVE_ROUTE_SHARE = 126 / 130;
 const ADDIS_LAT = 8.9806;
 const ADDIS_LON = 38.7578;
 
@@ -294,8 +295,9 @@ function simulateSystem(fuelPrice, routes) {
     const baselineFuelCost = (baseRoute.per_flight.fuel_cost || 0) * (baseRoute.effective_flights || 1);
     const distancePenalty = baseRoute.distance / 5000;
     const breakevenFuel = baselineFuelCost > 0 ? (1 + (baseRoute.profit / baselineFuelCost)) - distancePenalty : Number.POSITIVE_INFINITY;
-    const watchFuel = breakevenFuel * 0.9;
-    const active = Number(fuelPrice) < breakevenFuel;
+    const thresholdShift = (baseRoute.distance / 5000) * Math.max(0, Number(fuelPrice) - 1.0) * 1.2;
+    const active = Number(fuelPrice) < (breakevenFuel - thresholdShift);
+    const watchFuel = (breakevenFuel - thresholdShift) * 0.9;
     const status = !active ? "unsustainable" : Number(fuelPrice) >= watchFuel ? "watch" : "healthy";
     const perFlightPassengerRevenue = route.per_flight.passenger_revenue;
     const perFlightAncillaryRevenue = route.per_flight.ancillary_revenue;
@@ -324,12 +326,11 @@ function simulateSystem(fuelPrice, routes) {
     };
   });
 
-  const baselineFlights = baselineRaw.route_map.routes.reduce((sum, route) => sum + (route.active ? route.effective_flights : 0), 0);
-  const currentFlights = scaledRoutes.reduce((sum, route) => sum + (route.active ? route.effective_flights : 0), 0);
-  const baselinePassengers = Math.max(1, baselineRaw.summary.passengers);
-  const currentPassengerShare = clamp(raw.summary.passengers / baselinePassengers, 0, 1);
-  const currentFlightShare = baselineFlights ? clamp(currentFlights / baselineFlights, 0, 1) : 0;
-  const workloadShare = clamp(currentFlightShare * (0.6 + 0.4 * currentPassengerShare), 0, 1);
+  const routeNetworkShare = scaledRoutes.length ? clamp(scaledRoutes.filter((route) => route.active).length / scaledRoutes.length, 0, 1) : 0;
+  const relativeNetworkShare = BASELINE_ACTIVE_ROUTE_SHARE ? clamp(routeNetworkShare / BASELINE_ACTIVE_ROUTE_SHARE, 0, 1) : 0;
+  const demandShare = Math.pow(relativeNetworkShare, 0.35);
+  const fuelLoadShare = Math.pow(Number(fuelPrice), -1.22);
+  const workloadShare = clamp(fuelLoadShare * demandShare, 0, 1);
   const baselineTotalRequiredHours = TOTAL_PILOTS * MONTHLY_HOURS_BENCHMARK;
   const currentTotalRequiredHours = baselineTotalRequiredHours * workloadShare;
   const currentHoursPerPilot = workloadShare * MONTHLY_HOURS_BENCHMARK;

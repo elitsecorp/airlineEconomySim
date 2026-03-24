@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ethiopian Airlines Simulation Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Interactive Airline Simulation</p>
+        <h1>Ethiopian Airlines Operations Dashboard</h1>
+        <p class="subhead">The income statement is anchored to Ethiopian Airlines published 2023/24 annual report. Slide fuel to see route cuts, pilot-hour losses, and network stress in real time.</p>
+      </div>
+      <section class="control-card">
+        <div class="control-row">
+          <label for="fuel-slider">Fuel price index</label>
+          <span class="slider-value" id="fuel-value">1.0x</span>
+        </div>
+        <input id="fuel-slider" type="range" min="1" max="3" step="0.05" value="1">
+        <div class="slider-scale"><span>1.0</span><span>2.0</span><span>3.0</span></div>
+      </section>
+    </header>
+
+    <section class="stats-grid">
+      <article class="stat-card">
+        <span class="label">Revenue</span>
+        <strong id="revenue-value">${{ "{:,.0f}".format(initial_state.summary.revenue) }}</strong>
+      </article>
+      <article class="stat-card">
+        <span class="label">Cost</span>
+        <strong id="cost-value">${{ "{:,.0f}".format(initial_state.summary.cost) }}</strong>
+      </article>
+      <article class="stat-card">
+        <span class="label">Operating Profit</span>
+        <strong id="profit-value" class="{{ 'positive' if initial_state.summary.profit >= 0 else 'negative' }}">${{ "{:,.0f}".format(initial_state.summary.profit) }}</strong>
+      </article>
+      <article class="stat-card">
+        <span class="label">Active Routes</span>
+        <strong id="routes-value">{{ initial_state.summary.active_routes }}</strong>
+      </article>
+      <article class="stat-card">
+        <span class="label">Pilot Hours / Month</span>
+        <strong id="pilot-hours-value">{{ "{:,.1f}".format(initial_state.summary.pilot_hours_per_pilot) }}</strong>
+      </article>
+      <article class="stat-card">
+        <span class="label">Hours Lost / Pilot</span>
+        <strong id="lost-hours-value">{{ "{:,.1f}".format(initial_state.summary.lost_hours_per_pilot) }}</strong>
+      </article>
+    </section>
+
+    <section class="panel chart-panel chart-full">
+      <div class="panel-head">
+        <h2>Income Statement</h2>
+        <p>Revenue, cost, and operating profit anchored to real financials</p>
+      </div>
+      <canvas id="income-chart"></canvas>
+    </section>
+
+    <section class="detail-grid structure-grid">
+      <article class="panel chart-panel">
+        <div class="panel-head">
+          <h2>Revenue Structure</h2>
+          <p>Published 2023/24 segment mix scaled to the current simulation total</p>
+        </div>
+        <canvas id="revenue-structure-chart"></canvas>
+        <p class="source-note" id="revenue-structure-note"></p>
+      </article>
+
+      <article class="panel chart-panel">
+        <div class="panel-head">
+          <h2>Cost Structure</h2>
+          <p>Modeled from the airline's operating cost drivers, scaled to total expense</p>
+        </div>
+        <canvas id="cost-structure-chart"></canvas>
+        <p class="source-note" id="cost-structure-note"></p>
+      </article>
+    </section>
+
+    <section class="detail-grid">
+      <article class="panel map-panel">
+        <div class="panel-head">
+          <h2>Route Network</h2>
+          <p>Click a route to see why it is at risk, if it is at risk</p>
+        </div>
+        <div class="route-summary">
+          <div><span>Active</span><strong id="active-routes-value">{{ initial_state.summary.active_routes }}</strong></div>
+          <div><span>At risk</span><strong id="at-risk-value">{{ initial_state.summary.at_risk_routes }}</strong></div>
+          <div><span>Suspended</span><strong id="suspended-value">{{ initial_state.summary.suspended_routes }}</strong></div>
+          <div><span>Passengers</span><strong id="passenger-value">{{ "{:,.0f}".format(initial_state.summary.passengers) }}</strong></div>
+        </div>
+        <div class="map-shell">
+          <div id="route-map"></div>
+          <aside class="route-detail" id="route-detail">
+            <h3>Route details</h3>
+            <p class="route-detail-empty">Click a route on the map to inspect its economics and risk drivers.</p>
+            <div class="route-mini-chart">
+              <canvas id="route-economics-chart"></canvas>
+            </div>
+          </aside>
+        </div>
+        <p class="source-note">
+          Route list curated from Ethiopian Airlines' published destinations.
+          <a href="https://www.ethiopianairlines.com" target="_blank" rel="noreferrer">Official site</a>
+        </p>
+      </article>
+
+      <article class="panel pilot-panel">
+        <div class="panel-head">
+          <h2>Pilot Workload</h2>
+          <p>Normal monthly work is 100 hours per pilot. The gauge shows how route cuts push that lower.</p>
+        </div>
+        <div class="gauge-wrap">
+          <div class="gauge" id="gauge">
+            <div class="gauge-core">
+              <span id="pilot-utilization">{{ initial_state.pilot.utilization }}%</span>
+              <small id="pilot-state">{{ initial_state.pilot.state|capitalize }}</small>
+            </div>
+          </div>
+          <div class="mini-metrics">
+            <div><span>Expected hours / pilot</span><strong id="hours-per-pilot">{{ "{:,.1f}".format(initial_state.pilot.hours_per_pilot) }}</strong></div>
+            <div><span>Hours lost / pilot</span><strong id="pilot-lost-hours">{{ "{:,.1f}".format(initial_state.pilot.lost_hours_per_pilot) }}</strong></div>
+            <div><span>Required hours</span><strong id="required-hours">{{ "{:,.0f}".format(initial_state.pilot.required_hours) }}</strong></div>
+            <div><span>Baseline hours</span><strong id="baseline-hours">{{ "{:,.0f}".format(initial_state.pilot.baseline_hours) }}</strong></div>
+          </div>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    window.__INITIAL_STATE__ = {{ initial_state | tojson }};
+  </script>
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
